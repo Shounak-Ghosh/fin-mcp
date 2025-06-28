@@ -8,6 +8,21 @@ HEADERS = {
     'User-Agent': 'Mozilla/5.0 (compatible; SECAPIMCP/1.0; +https://yourdomain.com/contact)'
 }
 
+def lookup_ticker(company_name: str) -> str | None:
+    # print("REACHED LOOKUP TICKER")
+    url = "https://www.sec.gov/files/company_tickers.json"
+    r = requests.get(url, headers=HEADERS)
+    data = pd.DataFrame.from_dict(r.json(), orient="index")
+    print(data.head())
+
+    matches = data[data["title"].str.contains(company_name, case=False, na=False)]
+    if not matches.empty:
+        # print("REACHED MATCHES")
+        # print(matches)
+        return matches.iloc[0]["ticker"]
+    
+    return None
+
 def get_cik(ticker: str) -> str:
     url = f"https://www.sec.gov/files/company_tickers.json"
     company_tickers = requests.get(url, headers=HEADERS).json()
