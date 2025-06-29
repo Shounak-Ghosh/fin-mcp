@@ -13,11 +13,12 @@ def fetch_10k_analysis(ticker: str, year: int | None = None) -> dict:
     return analyze_10k(ticker, year)
 
 @mcp.tool
-def fetch_ticker(company_name: str) -> str | None:
+async def fetch_ticker(company_name: str) -> str | None:
     """
     Fetch the ticker symbol for a given company name.
     """
     ticker = lookup_ticker(company_name)
+    print(f"Ticker for {company_name}: {ticker}")
     return {"ticker": ticker} if ticker else {"ticker": None}
 
 @mcp.tool

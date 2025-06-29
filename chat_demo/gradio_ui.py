@@ -66,14 +66,14 @@ async def chatbot_interface(message, history):
 
 
 with gr.Blocks() as demo:
-    gr.Markdown("# 📊 10-K Intelligence Chat with Streaming")
+    gr.Markdown("# 📊 FinMCP Chatbot Demo: 10-K Document Analyzer")
 
     # Specify type='messages' for the chatbot component
     chatbot = gr.Chatbot(height=400, type='messages')
 
     with gr.Row():
         msg = gr.Textbox(
-            placeholder="Ask me about a company...",
+            placeholder="Ask me to analyze a 10-K document for any company from any year.",
             container=False,
             scale=7
         )

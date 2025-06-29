@@ -34,6 +34,7 @@ class Parse10KAgent(BaseAgent):
             sections = parse_10k(accession_number, cik)
             
             return {
+                "year": chosen_year,
                 "risk_factors": sections.get("item_1a", ""),
                 "mdna": sections.get("item_7", "") + "\n\n" + sections.get("item_7a", ""),
                 "ticker": ticker,

@@ -13,7 +13,7 @@ def lookup_ticker(company_name: str) -> str | None:
     url = "https://www.sec.gov/files/company_tickers.json"
     r = requests.get(url, headers=HEADERS)
     data = pd.DataFrame.from_dict(r.json(), orient="index")
-    print(data.head())
+    # print(data.head())
 
     matches = data[data["title"].str.contains(company_name, case=False, na=False)]
     if not matches.empty:
