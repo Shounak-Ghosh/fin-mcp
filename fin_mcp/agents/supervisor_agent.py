@@ -26,7 +26,7 @@ Tone Summary:
 
 class SupervisorAgent(BaseAgent):
     def __init__(self, llm):
-        super().init(llm)
+        super().__init__(llm)
         self.llm = llm
 
     def run(self, state: GraphState) -> dict:

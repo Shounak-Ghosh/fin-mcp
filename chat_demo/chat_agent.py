@@ -4,16 +4,14 @@ from langchain_openai import ChatOpenAI
 from langchain.tools import Tool, StructuredTool
 from langchain_core.messages import AIMessage, HumanMessage, BaseMessage, AIMessageChunk
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import RunnableConfig
 from fastmcp import Client
 import asyncio
 import json
-import asyncio 
 
 from dotenv import load_dotenv
 load_dotenv(override=True) 
 
-from typing import Iterator, Dict, Union, AsyncIterator, Optional
+from typing import Dict, AsyncIterator, Optional
 from pydantic import BaseModel
 
 class _Analyze10KInput(BaseModel):

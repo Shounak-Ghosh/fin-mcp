@@ -1,4 +1,4 @@
-# sec_api_mpc/sec_tools/sec_tools.py
+# fin_mcp/tools/sec_tools.py
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -24,7 +24,7 @@ def lookup_ticker(company_name: str) -> str | None:
     return None
 
 def get_cik(ticker: str) -> str:
-    url = f"https://www.sec.gov/files/company_tickers.json"
+    url = "https://www.sec.gov/files/company_tickers.json"
     company_tickers = requests.get(url, headers=HEADERS).json()
     company_data = pd.DataFrame.from_dict(company_tickers, orient='index')
 
@@ -79,7 +79,7 @@ def parse_10k(accession_number: str, cik: str) -> dict:
     df = pd.DataFrame([(x.group(), x.start(), x.end()) for x in matches])
     df.columns = ['item', 'start', 'end']
     # Get rid of unnesesary charcters from the dataframe
-    df.replace({'&#160;': ' ', '&nbsp;': ' ', ' ': '', '>': '', '\.': ''}, regex=True, inplace=True)
+    df.replace({'&#160;': ' ', '&nbsp;': ' ', ' ': '', '>': '', r'\.': ''}, regex=True, inplace=True)
     # convert item names to lowercase and remove non-alphanumeric characters
     df['item'] = df['item'].str.lower().str.replace(r'[^a-z0-9]', '', regex=True)
 

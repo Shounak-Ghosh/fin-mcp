@@ -2,11 +2,10 @@
 from .base_agent import BaseAgent
 from fin_mcp.tools.sec_tools import get_cik, get_accession_numbers, parse_10k
 from fin_mcp.models.state import GraphState
-from fin_mcp.tools.sec_tools import get_cik, get_accession_numbers, parse_10k
 
 class Parse10KAgent(BaseAgent):
     def __init__(self, llm):
-        super().init(llm)
+        super().__init__(llm)
 
     def run(self, state: GraphState) -> dict:
         ticker = state.ticker  # assume input is a Pydantic state object with .ticker

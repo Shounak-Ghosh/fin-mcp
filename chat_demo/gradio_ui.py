@@ -1,7 +1,7 @@
-# chat_demo/chat_agent.py
+# chat_demo/gradio_ui.py
 import gradio as gr
 from langchain_core.messages import HumanMessage, AIMessage
-from chat_agent import stream_chat_agent # Import the async stream_chat_agent
+from chat_demo.chat_agent import stream_chat_agent # Import the async stream_chat_agent
 
 # Gradio's chat history is always a list of lists/dicts.
 # Your format_chat_history function should convert it to LangChain's message objects.
@@ -84,5 +84,9 @@ with gr.Blocks() as demo:
     msg.submit(chatbot_interface, inputs=[msg, chatbot], outputs=chatbot, concurrency_limit=None)
     clear.click(lambda: [], outputs=chatbot, queue=False)
 
-if __name__ == "__main__":
+def main():
+    """Entry point for the fin-mcp Gradio demo."""
     demo.launch()
+
+if __name__ == "__main__":
+    main()

@@ -1,22 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "fin_mcp"
 version = "0.1.0"
-description = "An MCP server for gaining insight into real-time financial news streams"
+description = "An MCP server for AI-powered analysis of SEC 10-K filings using multi-agent LangGraph workflows"
 readme = "README.md"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Siddharth Ghosh"}
+]
+keywords = ["mcp", "sec", "10-k", "financial-analysis", "langchain", "langgraph", "ai-agents"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
 dependencies = [
-    "bs4>=0.0.2",
+    "beautifulsoup4>=4.12.0",
     "fastmcp>=2.9.2",
-    "gradio>=5.35.0",
     "langchain>=0.3.26",
+    "langchain-core>=0.3.0",
     "langchain-openai>=0.3.27",
     "langgraph>=0.5.0",
     "lxml>=6.0.0",
     "openai>=1.93.0",
     "pandas>=2.3.0",
+    "python-dotenv>=1.0.0",
     "requests>=2.32.4",
 ]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["fin_mcp"]
+[project.optional-dependencies]
+demo = [
+    "gradio>=5.35.0",
+]
+
+[project.scripts]
+fin-mcp = "fin_mcp.server:main"
+fin-mcp-demo = "chat_demo.gradio_ui:main"

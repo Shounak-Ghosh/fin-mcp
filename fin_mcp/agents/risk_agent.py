@@ -12,7 +12,7 @@ Return a numbered list of three risks with brief explanations.
 
 class RiskAgent(BaseAgent):
     def __init__(self, llm):
-        super().init(llm)
+        super().__init__(llm)
         self.llm = llm
 
     def run(self, state: GraphState) -> dict:

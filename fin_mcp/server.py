@@ -33,5 +33,9 @@ def fetch_accession_numbers(cik: str) -> dict:
 def fetch_10k_sections(accession_number: str, cik: str) -> dict:
     return parse_10k(accession_number, cik)
 
-if __name__ == "__main__":
+def main():
+    """Entry point for the fin-mcp server."""
     mcp.run(transport="http")
+
+if __name__ == "__main__":
+    main()
