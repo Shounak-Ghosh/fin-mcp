@@ -4,7 +4,7 @@ An MCP (Model Context Protocol) server for AI-powered analysis of SEC 10-K filin
 
 ## Overview
 
-**fin-mcp** scrapes SEC EDGAR 10-K reports and analyzes them using a sophisticated multi-agent system built with LangChain and LangGraph. The system extracts key insights including strategic risks, management tone/sentiment, and comprehensive financial summaries.
+**fin-mcp** scrapes SEC EDGAR 10-K reports and analyzes them using a fan-in, fan-out multi-agent system built with LangChain and LangGraph. The system extracts key insights including strategic risks, management tone/sentiment, and comprehensive financial summaries.
 
 ### Features
 
@@ -29,6 +29,7 @@ User Query → Parse10K Agent → [Risk Agent + Tone Agent (parallel)] → Super
 
 - Python 3.11 or higher
 - OpenAI API key
+- SEC API key
 
 ### Clone and Install
 
@@ -55,6 +56,7 @@ Create a `.env` file in the project root:
 
 ```bash
 OPENAI_API_KEY=your_openai_api_key_here
+SEC_API_KEY=your_sec_api_key_here
 ```
 
 ## Usage
@@ -64,10 +66,8 @@ OPENAI_API_KEY=your_openai_api_key_here
 Start the MCP server to expose 10-K analysis tools:
 
 ```bash
-# Using the installed script
-fin-mcp
-
-# Or using Python module
+# Using the Python module
+# Helpful tip: Run the MCP server in a standalone terminal/bash shell
 python -m fin_mcp.server
 ```
 
@@ -83,10 +83,8 @@ The server will start on HTTP transport and expose the following MCP tools:
 Launch the interactive chat interface:
 
 ```bash
-# Using the installed script
-fin-mcp-demo
-
-# Or using Python module
+# Using Python module
+# Helpful tip: Run the MCP server in a standalone terminal/bash shell
 python -m chat_demo.gradio_ui
 ```
 
@@ -135,25 +133,6 @@ fin-mcp/
 │   └── gradio_ui.py
 ├── pyproject.toml       # Package configuration
 └── README.md
-```
-
-## Development
-
-### Installing in Development Mode
-
-```bash
-# Install with all dependencies
-uv pip install -e ".[demo]"
-```
-
-### Testing the Package
-
-```bash
-# Test the MCP server
-python -m fin_mcp.server
-
-# Test the demo
-python -m chat_demo.gradio_ui
 ```
 
 ## How It Works
