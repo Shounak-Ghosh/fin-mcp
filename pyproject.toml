@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "Siddharth Ghosh"}
+    {name = "Shounak Ghosh"}
 ]
 keywords = ["mcp", "sec", "10-k", "financial-analysis", "langchain", "langgraph", "ai-agents"]
 classifiers = [
@@ -28,6 +28,7 @@ classifiers = [
 dependencies = [
     "beautifulsoup4>=4.12.0",
     "fastmcp>=2.9.2",
+    "gradio>=5.35.0",
     "langchain>=0.3.26",
     "langchain-core>=0.3.0",
     "langchain-openai>=0.3.27",

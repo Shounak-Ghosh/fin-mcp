@@ -38,6 +38,10 @@ User Query → Parse10K Agent → [Risk Agent + Tone Agent (parallel)] → Super
 git clone https://github.com/yourusername/fin-mcp.git
 cd fin-mcp
 
+uv venv # Create virtual environment, needs to be activated
+
+uv sync # Pull in dependencies
+
 # Install dependencies (using uv)
 uv pip install -e .
 
