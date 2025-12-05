@@ -18,35 +18,44 @@ function DashboardWrapper() {
   const [aiSummary, setAiSummary] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
+  const fetchMarketData = async () => {
+    try {
+      const [
+        marketRes,
+        watchlistRes,
+        newsRes,
+        sectorsRes,
+        gainersRes
+      ] = await Promise.all([
+        axios.get(`${API_URL}/market-status`),
+        axios.get(`${API_URL}/watchlist`),
+        axios.get(`${API_URL}/news?limit=3`),
+        axios.get(`${API_URL}/sectors`),
+        axios.get(`${API_URL}/gainers`)
+      ]);
+
+      setMarketStatus(marketRes.data);
+      setWatchlist(watchlistRes.data);
+      setNews(newsRes.data);
+      setSectors(sectorsRes.data);
+      setGainers(gainersRes.data);
+    } catch (error) {
+      console.error('Error fetching market data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshWatchlist = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/watchlist`);
+      setWatchlist(res.data);
+    } catch (error) {
+      console.error('Error refreshing watchlist:', error);
+    }
+  };
+
   useEffect(() => {
-    const fetchMarketData = async () => {
-      try {
-        const [
-          marketRes,
-          watchlistRes,
-          newsRes,
-          sectorsRes,
-          gainersRes
-        ] = await Promise.all([
-          axios.get(`${API_URL}/market-status`),
-          axios.get(`${API_URL}/watchlist`),
-          axios.get(`${API_URL}/news?limit=3`),
-          axios.get(`${API_URL}/sectors`),
-          axios.get(`${API_URL}/gainers`)
-        ]);
-
-        setMarketStatus(marketRes.data);
-        setWatchlist(watchlistRes.data);
-        setNews(newsRes.data);
-        setSectors(sectorsRes.data);
-        setGainers(gainersRes.data);
-      } catch (error) {
-        console.error('Error fetching market data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     const fetchAISummary = async () => {
       try {
         const res = await axios.get(`${API_URL}/ai-summary`);
@@ -82,6 +91,7 @@ function DashboardWrapper() {
       sectors={sectors}
       gainers={gainers}
       aiSummary={aiSummary}
+      onRefreshWatchlist={refreshWatchlist}
     />
   );
 }

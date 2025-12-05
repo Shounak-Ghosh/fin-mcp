@@ -14,6 +14,7 @@ interface Props {
     sectors: SectorItem[];
     gainers: GainerItem[];
     aiSummary: string;
+    onRefreshWatchlist: () => void;
 }
 
 export const Dashboard: React.FC<Props> = ({
@@ -22,7 +23,8 @@ export const Dashboard: React.FC<Props> = ({
     news,
     sectors,
     gainers,
-    aiSummary
+    aiSummary,
+    onRefreshWatchlist
 }) => {
     return (
         <div className="min-h-screen bg-background text-text p-6 md:p-8">
@@ -54,7 +56,7 @@ export const Dashboard: React.FC<Props> = ({
 
                 {/* Right Column - Watchlist & Sectors */}
                 <div className="lg:col-span-4 space-y-8">
-                    <Watchlist data={watchlist} />
+                    <Watchlist data={watchlist} onRefresh={onRefreshWatchlist} />
                     <GainersList data={gainers} />
                     <SectorPerformance data={sectors} />
                 </div>

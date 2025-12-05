@@ -52,19 +52,165 @@ def get_market_status():
         {"symbol": "^VIX", "name": "VIX", "price": fluctuate(15.75), "change": fluctuate(-0.33), "percentChange": fluctuate(-2.05)},
     ]
 
+import json
+import requests
+from pydantic import BaseModel
+
+WATCHLIST_FILE = "watchlist.json"
+
+def load_watchlist_symbols():
+    if not os.path.exists(WATCHLIST_FILE):
+        return []
+    with open(WATCHLIST_FILE, "r") as f:
+        return json.load(f)
+
+def save_watchlist_symbols(symbols):
+    with open(WATCHLIST_FILE, "w") as f:
+        json.dump(symbols, f)
+
+class WatchlistAddRequest(BaseModel):
+    symbol: str
+
 @app.get("/api/watchlist")
 def get_watchlist():
-    # Mock data for now, will replace with real yfinance calls
+    symbols = load_watchlist_symbols()
+    if not symbols:
+        return []
+        
     def fluctuate(value):
         return round(value + random.uniform(-0.5, 0.5), 2)
+    
+    # Fetch real data for these symbols
+    # For now, we'll use a mix of real data fetching (if we were fully implementing it) 
+    # and the existing mock structure to keep it consistent with the rest of the app for now.
+    # Ideally, we should do a batch fetch with yfinance.
+    
+    data = []
+    try:
+        # Batch fetch is better
+        tickers = yf.Tickers(" ".join(symbols))
         
-    return [
-        {"symbol": "ORCL", "name": "Oracle Corporation", "price": fluctuate(214.38), "change": fluctuate(3.20), "percentChange": fluctuate(1.5)},
-        {"symbol": "AVGO", "name": "Broadcom Inc.", "price": fluctuate(381.03), "change": fluctuate(0.11), "percentChange": fluctuate(0.03)},
-        {"symbol": "AMZN", "name": "Amazon.com, Inc.", "price": fluctuate(229.11), "change": fluctuate(-1.41), "percentChange": fluctuate(-0.6)},
-        {"symbol": "NVDA", "name": "NVIDIA Corporation", "price": fluctuate(183.46), "change": fluctuate(2.15), "percentChange": fluctuate(1.18)},
-        {"symbol": "GOOG", "name": "Alphabet Inc.", "price": fluctuate(318.39), "change": fluctuate(-0.70), "percentChange": fluctuate(-0.22)},
-    ]
+        for symbol in symbols:
+            try:
+                # Accessing tickers.tickers[symbol] might fail if symbol is invalid
+                # But yfinance is a bit tricky with Tickers object, sometimes it's better to use Ticker individually for small lists
+                # or use download() for batch.
+                
+                # Let's try individual for safety and simplicity in this context, 
+                # though batch is better for performance.
+                ticker = yf.Ticker(symbol)
+                fast_info = ticker.fast_info
+                
+                price = fast_info.last_price
+                prev_close = fast_info.previous_close
+                
+                if price and prev_close:
+                    change = price - prev_close
+                    percent_change = (change / prev_close) * 100
+                    name = ticker.info.get('shortName', symbol)
+                else:
+                    # Fallback if data missing
+                    price = 100.0
+                    change = 0.0
+                    percent_change = 0.0
+                    name = symbol
+
+                data.append({
+                    "symbol": symbol,
+                    "name": name,
+                    "price": round(price, 2),
+                    "change": round(change, 2),
+                    "percentChange": round(percent_change, 2)
+                })
+            except Exception as e:
+                print(f"Error fetching data for {symbol}: {e}")
+                # Keep it in the list but with error data or skip? 
+                # Let's show it with placeholder
+                data.append({
+                    "symbol": symbol,
+                    "name": symbol,
+                    "price": 0.0,
+                    "change": 0.0,
+                    "percentChange": 0.0
+                })
+                
+    except Exception as e:
+        print(f"Global error in watchlist fetch: {e}")
+        return []
+
+    return data
+
+
+@app.get("/api/search")
+def search_stocks(q: str):
+    results = []
+    
+    # 1. Try Yahoo Finance Search API
+    try:
+        # Try query1 instead of query2
+        url = "https://query1.finance.yahoo.com/v1/finance/search"
+        params = {
+            "q": q,
+            "quotesCount": 5,
+            "newsCount": 0,
+            "enableFuzzyQuery": "true",
+            "quotesQueryId": "tss_match_phrase_query"
+        }
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        
+        response = requests.get(url, params=params, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            if "quotes" in data:
+                for quote in data["quotes"]:
+                    if "symbol" in quote:
+                        results.append({
+                            "symbol": quote["symbol"],
+                            "name": quote.get("shortname", quote.get("longname", quote["symbol"])),
+                            "type": quote.get("quoteType", "Unknown"),
+                            "exchange": quote.get("exchange", "")
+                        })
+    except Exception as e:
+        print(f"Search API failed: {e}")
+
+    # 2. Fallback: Check if 'q' is a valid ticker directly
+    # Only if we have few results or API failed
+    if len(results) == 0:
+        try:
+            # Check if it looks like a ticker
+            if len(q) <= 6 and q.isalpha():
+                ticker = yf.Ticker(q)
+                # fast_info is cheap
+                if ticker.fast_info.last_price:
+                    info = ticker.info
+                    results.append({
+                        "symbol": q.upper(),
+                        "name": info.get('shortName', info.get('longName', q.upper())),
+                        "type": "Equity", # Assumption
+                        "exchange": "Unknown"
+                    })
+        except Exception:
+            pass
+            
+    return results
+
+@app.post("/api/watchlist")
+def add_to_watchlist(item: WatchlistAddRequest):
+    symbols = load_watchlist_symbols()
+    if item.symbol not in symbols:
+        symbols.append(item.symbol)
+        save_watchlist_symbols(symbols)
+    return {"status": "success", "watchlist": symbols}
+
+@app.delete("/api/watchlist/{symbol}")
+def remove_from_watchlist(symbol: str):
+    symbols = load_watchlist_symbols()
+    if symbol in symbols:
+        symbols.remove(symbol)
+        save_watchlist_symbols(symbols)
+    return {"status": "success", "watchlist": symbols}
 
 @app.get("/api/news")
 def get_news(limit: int = None):
