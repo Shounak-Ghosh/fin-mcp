@@ -27,9 +27,17 @@ else:
     print("Warning: OPENAI_API_KEY not found. AI summary feature will be disabled.")
 
 import random
+import time
+
+# Simple cache: {symbol: {"data": data_dict, "timestamp": timestamp}}
+MARKET_CACHE = {}
+CACHE_DURATION = 60 # 60 seconds
 
 @app.get("/api/market-status")
 def get_market_status():
+    global MARKET_CACHE
+    current_time = time.time()
+    
     # Load watchlist symbols
     symbols = load_watchlist_symbols()
     
@@ -50,6 +58,13 @@ def get_market_status():
     data = []
     
     for symbol in target_symbols:
+        # Check cache
+        if symbol in MARKET_CACHE:
+            cached_data = MARKET_CACHE[symbol]
+            if current_time - cached_data["timestamp"] < CACHE_DURATION:
+                data.append(cached_data["data"])
+                continue
+
         try:
             ticker = yf.Ticker(symbol)
             
@@ -58,7 +73,7 @@ def get_market_status():
             price = fast_info.last_price
             prev_close = fast_info.previous_close
             
-            if price and prev_close:
+            if price is not None and prev_close is not None:
                 change = price - prev_close
                 percent_change = (change / prev_close) * 100
                 name = ticker.info.get('shortName', symbol)
@@ -68,40 +83,75 @@ def get_market_status():
                 change = 0.0
                 percent_change = 0.0
                 name = symbol
-
-            # Get 1 day history for sparkline (5m interval for detail)
-            history_df = ticker.history(period="1d", interval="5m")
+            
+            # Check for validity of price, sometimes yfinance returns broken objects
+            if not isinstance(price, (int, float)):
+                 price = 0.0
+                 
+            # Get 5 day history to ensure we cover the last 24 hours
+            # 15m interval gives us enough detail without being too heavy
+            history_df = ticker.history(period="5d", interval="15m", prepost=True)
             
             history_data = []
             if not history_df.empty:
-                # Normalize data for sparkline (just values)
-                # We could send timestamps if we wanted a detailed chart, but sparkline just needs shape
-                history_data = [{"value": round(x, 2)} for x in history_df['Close'].tolist()]
+                # Filter for last 24 hours
+                import pandas as pd
+                from datetime import timedelta
+                
+                # Get the last available timestamp
+                last_time = history_df.index[-1]
+                cutoff_time = last_time - timedelta(hours=24)
+                
+                filtered_df = history_df[history_df.index > cutoff_time]
+                
+                # Format data for frontend including time
+                for time_idx, row in filtered_df.iterrows():
+                    history_data.append({
+                        "time": time_idx.isoformat(),
+                        "value": round(row['Close'], 4)
+                    })
             
-            # If history is empty (e.g. market closed or error), mock a flat line or use previous close
+            # If history is empty (e.g. market closed or error), mock flat line
             if not history_data:
-                 history_data = [{"value": price}] * 20
+                # Use current price
+                 history_data = [
+                     {"time": "2024-01-01T00:00:00", "value": price},
+                     {"time": "2024-01-01T23:59:59", "value": price}
+                 ]
 
-            data.append({
+            symbol_data = {
                 "symbol": symbol,
                 "name": name,
                 "price": round(price, 2),
                 "change": round(change, 2),
                 "percentChange": round(percent_change, 2),
                 "history": history_data
-            })
+            }
+            
+            data.append(symbol_data)
+            
+            # Update cache if data looks valid (price > 0)
+            if price > 0:
+                 MARKET_CACHE[symbol] = {
+                     "data": symbol_data,
+                     "timestamp": current_time
+                 }
             
         except Exception as e:
             print(f"Error fetching market status for {symbol}: {e}")
-            # Add error placeholder
-            data.append({
-                "symbol": symbol,
-                "name": symbol,
-                "price": 0.0,
-                "change": 0.0,
-                "percentChange": 0.0,
-                "history": []
-            })
+            # Try to use old cache even if expired if fetch failed
+            if symbol in MARKET_CACHE:
+                 data.append(MARKET_CACHE[symbol]["data"])
+            else:
+                # Add error placeholder
+                data.append({
+                    "symbol": symbol,
+                    "name": symbol,
+                    "price": 0.0,
+                    "change": 0.0,
+                    "percentChange": 0.0,
+                    "history": []
+                })
             
     return data
 
