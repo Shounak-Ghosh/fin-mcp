@@ -29,25 +29,141 @@ else:
 import random
 import time
 
-# Simple cache: {symbol: {"data": data_dict, "timestamp": timestamp}}
-MARKET_CACHE = {}
-CACHE_DURATION = 60 # 60 seconds
+# Shared Cache System
+PRICE_CACHE = {}
+PRICE_CACHE_DURATION = 30  # 30 seconds (Balanced to safe-guard against rate limits)
+
+HISTORY_CACHE = {}
+HISTORY_CACHE_DURATION = 60  # 60 seconds (Much faster updates for graphs)
+
+def get_cached_stock_data(symbol: str):
+    """Fetch real-time price data with short-term caching"""
+    current_time = time.time()
+    
+    # Check cache
+    if symbol in PRICE_CACHE:
+        cached = PRICE_CACHE[symbol]
+        if current_time - cached["timestamp"] < PRICE_CACHE_DURATION:
+            return cached["data"]
+
+    try:
+        ticker = yf.Ticker(symbol)
+        fast_info = ticker.fast_info
+        
+        price = fast_info.last_price
+        prev_close = fast_info.previous_close
+        
+        if price is not None and prev_close is not None:
+            change = price - prev_close
+            percent_change = (change / prev_close) * 100
+            # Try to get a nice name
+            name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
+        else:
+            # Fallback
+            price = 0.0
+            change = 0.0
+            percent_change = 0.0
+            name = symbol
+
+        # Sanity check
+        if not isinstance(price, (int, float)):
+             price = 0.0
+
+        data = {
+            "symbol": symbol,
+            "name": name,
+            "price": round(price, 2),
+            "change": round(change, 2),
+            "percentChange": round(percent_change, 2)
+        }
+        
+        # Only cache if we got valid data
+        if price > 0:
+            PRICE_CACHE[symbol] = {
+                "timestamp": current_time,
+                "data": data
+            }
+        
+        return data
+
+    except Exception as e:
+        print(f"Error fetching price for {symbol}: {e}")
+        # Return stale data if available, or error placeholder
+        if symbol in PRICE_CACHE:
+            return PRICE_CACHE[symbol]["data"]
+        return {
+            "symbol": symbol,
+            "name": symbol,
+            "price": 0.0,
+            "change": 0.0,
+            "percentChange": 0.0
+        }
+
+def get_cached_history(symbol: str):
+    """Fetch 5-day history with long-term caching"""
+    current_time = time.time()
+    
+    if symbol in HISTORY_CACHE:
+        cached = HISTORY_CACHE[symbol]
+        if current_time - cached["timestamp"] < HISTORY_CACHE_DURATION:
+            return cached["data"]
+            
+    try:
+        ticker = yf.Ticker(symbol)
+        # Get 5 day history to ensure we cover the last 24 hours
+        history_df = ticker.history(period="5d", interval="15m", prepost=True)
+        
+        history_data = []
+        if not history_df.empty:
+            # Filter for last 24 hours
+            import pandas as pd
+            from datetime import timedelta
+            
+            last_time = history_df.index[-1]
+            cutoff_time = last_time - timedelta(hours=24)
+            
+            filtered_df = history_df[history_df.index > cutoff_time]
+            
+            for time_idx, row in filtered_df.iterrows():
+                history_data.append({
+                    "time": time_idx.isoformat(),
+                    "value": round(row['Close'], 4)
+                })
+        
+        # Fallback if empty
+        if not history_data:
+             # Need a price to mock a flat line?
+             # We can't easily get price here without recursion, so just return empty or minimal
+             # The frontend handles empty arrays? Or we can fetch price just for this.
+             pass
+
+        HISTORY_CACHE[symbol] = {
+            "timestamp": current_time,
+            "data": history_data
+        }
+        return history_data
+
+    except Exception as e:
+        print(f"Error fetching history for {symbol}: {e}")
+        if symbol in HISTORY_CACHE:
+            return HISTORY_CACHE[symbol]["data"]
+        return []
 
 @app.get("/api/market-status")
 def get_market_status():
-    global MARKET_CACHE
-    current_time = time.time()
-    
-    # Load watchlist symbols
+    # Load watchlist symbols to determine what to show
     symbols = load_watchlist_symbols()
     
-    # Default to indices if watchlist is empty or has fewer than 4 items
+    # Default logic
     default_tickers = ["ES=F", "NQ=F", "YM=F", "^VIX"]
+    target_symbols = []
+    
     if not symbols:
         target_symbols = default_tickers
     else:
+        # Take up to 4 from watchlist
         target_symbols = symbols[:4]
-        # Fill with defaults if less than 4
+        # Fill remainder with defaults if needed
         if len(target_symbols) < 4:
             for ticker in default_tickers:
                 if ticker not in target_symbols:
@@ -55,105 +171,28 @@ def get_market_status():
                     if len(target_symbols) >= 4:
                         break
     
-    data = []
-    
+    results = []
     for symbol in target_symbols:
-        # Check cache
-        if symbol in MARKET_CACHE:
-            cached_data = MARKET_CACHE[symbol]
-            if current_time - cached_data["timestamp"] < CACHE_DURATION:
-                data.append(cached_data["data"])
-                continue
-
-        try:
-            ticker = yf.Ticker(symbol)
+        # 1. Get Price Data
+        price_data = get_cached_stock_data(symbol)
+        
+        # 2. Get History Data (only needed for these sparkline cards)
+        history_data = get_cached_history(symbol)
+        
+        # 3. If history is empty, assume flat line based on current price
+        if not history_data and price_data["price"] > 0:
+             history_data = [
+                 {"time": "2024-01-01T00:00:00", "value": price_data["price"]},
+                 {"time": "2024-01-01T23:59:59", "value": price_data["price"]}
+             ]
+             
+        # Combine
+        full_data = price_data.copy()
+        full_data["history"] = history_data
+        
+        results.append(full_data)
             
-            # Get current price info
-            fast_info = ticker.fast_info
-            price = fast_info.last_price
-            prev_close = fast_info.previous_close
-            
-            if price is not None and prev_close is not None:
-                change = price - prev_close
-                percent_change = (change / prev_close) * 100
-                name = ticker.info.get('shortName', symbol)
-            else:
-                # Fallback
-                price = 0.0
-                change = 0.0
-                percent_change = 0.0
-                name = symbol
-            
-            # Check for validity of price, sometimes yfinance returns broken objects
-            if not isinstance(price, (int, float)):
-                 price = 0.0
-                 
-            # Get 5 day history to ensure we cover the last 24 hours
-            # 15m interval gives us enough detail without being too heavy
-            history_df = ticker.history(period="5d", interval="15m", prepost=True)
-            
-            history_data = []
-            if not history_df.empty:
-                # Filter for last 24 hours
-                import pandas as pd
-                from datetime import timedelta
-                
-                # Get the last available timestamp
-                last_time = history_df.index[-1]
-                cutoff_time = last_time - timedelta(hours=24)
-                
-                filtered_df = history_df[history_df.index > cutoff_time]
-                
-                # Format data for frontend including time
-                for time_idx, row in filtered_df.iterrows():
-                    history_data.append({
-                        "time": time_idx.isoformat(),
-                        "value": round(row['Close'], 4)
-                    })
-            
-            # If history is empty (e.g. market closed or error), mock flat line
-            if not history_data:
-                # Use current price
-                 history_data = [
-                     {"time": "2024-01-01T00:00:00", "value": price},
-                     {"time": "2024-01-01T23:59:59", "value": price}
-                 ]
-
-            symbol_data = {
-                "symbol": symbol,
-                "name": name,
-                "price": round(price, 2),
-                "change": round(change, 2),
-                "percentChange": round(percent_change, 2),
-                "history": history_data
-            }
-            
-            data.append(symbol_data)
-            
-            # Update cache if data looks valid (price > 0)
-            if price > 0:
-                 MARKET_CACHE[symbol] = {
-                     "data": symbol_data,
-                     "timestamp": current_time
-                 }
-            
-        except Exception as e:
-            print(f"Error fetching market status for {symbol}: {e}")
-            # Try to use old cache even if expired if fetch failed
-            if symbol in MARKET_CACHE:
-                 data.append(MARKET_CACHE[symbol]["data"])
-            else:
-                # Add error placeholder
-                data.append({
-                    "symbol": symbol,
-                    "name": symbol,
-                    "price": 0.0,
-                    "change": 0.0,
-                    "percentChange": 0.0,
-                    "history": []
-                })
-            
-    return data
+    return results
 
 import json
 import requests
@@ -180,68 +219,13 @@ def get_watchlist():
     if not symbols:
         return []
         
-    def fluctuate(value):
-        return round(value + random.uniform(-0.5, 0.5), 2)
-    
-    # Fetch real data for these symbols
-    # For now, we'll use a mix of real data fetching (if we were fully implementing it) 
-    # and the existing mock structure to keep it consistent with the rest of the app for now.
-    # Ideally, we should do a batch fetch with yfinance.
-    
-    data = []
-    try:
-        # Batch fetch is better
-        tickers = yf.Tickers(" ".join(symbols))
-        
-        for symbol in symbols:
-            try:
-                # Accessing tickers.tickers[symbol] might fail if symbol is invalid
-                # But yfinance is a bit tricky with Tickers object, sometimes it's better to use Ticker individually for small lists
-                # or use download() for batch.
-                
-                # Let's try individual for safety and simplicity in this context, 
-                # though batch is better for performance.
-                ticker = yf.Ticker(symbol)
-                fast_info = ticker.fast_info
-                
-                price = fast_info.last_price
-                prev_close = fast_info.previous_close
-                
-                if price and prev_close:
-                    change = price - prev_close
-                    percent_change = (change / prev_close) * 100
-                    name = ticker.info.get('shortName', symbol)
-                else:
-                    # Fallback if data missing
-                    price = 100.0
-                    change = 0.0
-                    percent_change = 0.0
-                    name = symbol
+    results = []
+    for symbol in symbols:
+        # Use simple shared cache
+        price_data = get_cached_stock_data(symbol)
+        results.append(price_data)
 
-                data.append({
-                    "symbol": symbol,
-                    "name": name,
-                    "price": round(price, 2),
-                    "change": round(change, 2),
-                    "percentChange": round(percent_change, 2)
-                })
-            except Exception as e:
-                print(f"Error fetching data for {symbol}: {e}")
-                # Keep it in the list but with error data or skip? 
-                # Let's show it with placeholder
-                data.append({
-                    "symbol": symbol,
-                    "name": symbol,
-                    "price": 0.0,
-                    "change": 0.0,
-                    "percentChange": 0.0
-                })
-                
-    except Exception as e:
-        print(f"Global error in watchlist fetch: {e}")
-        return []
-
-    return data
+    return results
 
 
 @app.get("/api/search")
