@@ -1,7 +1,7 @@
 # chat_demo/chat_agent.py
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
-from langchain.tools import Tool, StructuredTool
+from langchain_core.tools import Tool, StructuredTool
 from langchain_core.messages import AIMessage, HumanMessage, BaseMessage, AIMessageChunk
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from fastmcp import Client
@@ -54,10 +54,8 @@ tools = [
 # Define the LLM
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, streaming=True) # Ensure streaming is enabled
 
-# Define the prompt
-prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", """
+# Define the system prompt
+system_prompt = """
 You are a financial assistant. When users mention company names like 'Apple' or 'Google',
 always convert them to stock tickers like 'AAPL' or 'GOOGL' before passing to tools.
 Use the LookupTicker tool if needed. When calling the Analyze10K tool, you will receive structured data including 'top_risks', 'tone_summary', and 'summary'.
@@ -66,26 +64,13 @@ Always refer to the conversation history to see if you can answer questions with
 Only call one tool at a time and wait for its response before proceeding. 
 Do not call multiple tools in parallel or try to aggregate results from multiple tools in a single response.
 If you feel multiple tools are needed, call them sequentially (ie wait for tool completion and response) and use the results to inform your final response.
-"""),
-        MessagesPlaceholder(variable_name="chat_history", optional=True),
-        ("human", "{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ]
-)
+"""
 
-# Define the agent (core runnable logic)
-agent_runnable_logic = create_tool_calling_agent(
-    llm=llm,
+# Define the agent using langgraph
+smart_chat_agent = create_react_agent(
+    model=llm,
     tools=tools,
-    prompt=prompt
-)
-
-# AgentExecutor instance
-smart_chat_agent = AgentExecutor(
-    agent=agent_runnable_logic,
-    tools=tools,
-    verbose=True, # Keep verbose for debugging
-    handle_parsing_errors=True
+    prompt=system_prompt
 )
 
 async def stream_chat_agent(inputs: dict) -> AsyncIterator[Dict[str, str]]:
@@ -103,43 +88,32 @@ async def stream_chat_agent(inputs: dict) -> AsyncIterator[Dict[str, str]]:
                 lc_messages.append(AIMessage(content=content))
         elif isinstance(m, BaseMessage):
             lc_messages.append(m)
+    
+    # Add the current user message
+    lc_messages.append(HumanMessage(content=user_input))
 
     full_response_content = ""
     try:
-        # Use astream_log for detailed streaming, including final output word by word
-        async for chunk in smart_chat_agent.astream_log({
-            "input": user_input,
-            "chat_history": lc_messages
-        }):
-            # Each chunk is a "log patch"
-            for op in chunk.ops:
-                # Look for 'add' operations that contain message content
-                if op["op"] == "add":
-                    # Check if the path corresponds to a message, especially the final output
-                    # The path for the final AI message content often looks like:
-                    # /logs/Agent/final_output/output/content
-                    # or /logs/Agent/final_output/messages/0/content
-                    # or directly from the LLM stream within the agent
-                    if isinstance(op["value"], AIMessageChunk):
-                        delta = op["value"].content
-                        if delta:
-                            full_response_content += delta
-                            yield {"output": full_response_content}
-                    elif isinstance(op["value"], dict) and "content" in op["value"] and op["path"].endswith("/content"):
-                        # This might catch the final aggregated content
-                        delta = op["value"]["content"]
-                        if delta:
-                            full_response_content = delta # Replace with full content if it's a complete message
-                            yield {"output": full_response_content}
-                    elif op["path"].endswith("/output") and isinstance(op["value"], str):
-                        # This can catch the final string output of the agent
-                        full_response_content = op["value"]
-                        yield {"output": full_response_content}
-                    elif op["path"].endswith("/output") and isinstance(op["value"], AIMessage):
-                        # This can catch the final AIMessage object
-                        full_response_content = op["value"].content
-                        yield {"output": full_response_content}
-
+        # Use astream_events for detailed streaming
+        async for event in smart_chat_agent.astream_events(
+            {"messages": lc_messages},
+            version="v1"
+        ):
+            kind = event["event"]
+            
+            if kind == "on_chat_model_stream":
+                content = event["data"]["chunk"].content
+                if content:
+                    full_response_content += content
+                    yield {"output": full_response_content}
+            
+            # We can also handle tool calls if we want to show them, but for now just stream the final response
+            # The react agent will yield tool calls and then the final response.
+            # on_chat_model_stream will capture tokens from both tool calls and final response.
+            # We might want to filter out tool call tokens if we only want the final answer, 
+            # but usually showing the thought process is fine or we can filter based on event tags.
+            # For simplicity, we stream everything the model says.
+            
     except Exception as e:
         # Catch any unexpected errors from the agent's streaming process
         yield {"error": f"❌ Agent error: {str(e)}"}
