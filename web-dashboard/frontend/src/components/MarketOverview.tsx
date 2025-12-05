@@ -8,23 +8,15 @@ interface Props {
     data: MarketStatus[];
 }
 
-// Mock sparkline data generator since we don't have real historical data in the simple API yet
-const generateSparklineData = (trend: 'up' | 'down') => {
-    const data = [];
-    let val = 50;
-    for (let i = 0; i < 20; i++) {
-        val += (Math.random() - 0.5) * 10 + (trend === 'up' ? 1 : -1);
-        data.push({ value: val });
-    }
-    return data;
-};
+// Mock sparkline data generator removed
 
 export const MarketOverview: React.FC<Props> = ({ data }) => {
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {data.map((item) => {
                 const isPositive = item.percentChange >= 0;
-                const sparklineData = generateSparklineData(isPositive ? 'up' : 'down');
+                // Use real history data if available, otherwise empty array
+                const sparklineData = item.history || [];
 
                 return (
                     <div key={item.symbol} className="bg-surface rounded-xl p-4 border border-border">

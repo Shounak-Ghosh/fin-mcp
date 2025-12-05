@@ -4,6 +4,7 @@ export interface MarketStatus {
     price: number;
     change: number;
     percentChange: number;
+    history: { value: number }[];
 }
 
 export interface WatchlistItem {

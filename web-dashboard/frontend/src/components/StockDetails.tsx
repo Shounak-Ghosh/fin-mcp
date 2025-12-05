@@ -135,6 +135,11 @@ export const StockDetails: React.FC = () => {
                                         stroke="#6b7280"
                                         tickFormatter={(str) => {
                                             const d = new Date(str);
+                                            if (period === '1d' || period === '5d') {
+                                                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                            } else if (period === '1mo') {
+                                                return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
+                                            }
                                             return `${d.getMonth() + 1}/${d.getDate()}`;
                                         }}
                                         minTickGap={30}

@@ -30,27 +30,80 @@ import random
 
 @app.get("/api/market-status")
 def get_market_status():
-    # Fetch data for major indices/futures
-    tickers = ["ES=F", "NQ=F", "YM=F", "^VIX"]
-    # data = yf.download(tickers, period="1d", interval="5m", progress=False)
+    # Load watchlist symbols
+    symbols = load_watchlist_symbols()
     
-    # Process data to return current price and change
-    result = []
-    # Note: yfinance structure can be complex with multiple tickers, simplified logic here for now
-    # We might need to refine this based on actual yfinance output structure
+    # Default to indices if watchlist is empty or has fewer than 4 items
+    default_tickers = ["ES=F", "NQ=F", "YM=F", "^VIX"]
+    if not symbols:
+        target_symbols = default_tickers
+    else:
+        target_symbols = symbols[:4]
+        # Fill with defaults if less than 4
+        if len(target_symbols) < 4:
+            for ticker in default_tickers:
+                if ticker not in target_symbols:
+                    target_symbols.append(ticker)
+                    if len(target_symbols) >= 4:
+                        break
     
-    # Mocking structure for initial test to ensure endpoint works
-    # In a real implementation we would parse the dataframe
+    data = []
     
-    def fluctuate(value):
-        return round(value + random.uniform(-0.5, 0.5), 2)
+    for symbol in target_symbols:
+        try:
+            ticker = yf.Ticker(symbol)
+            
+            # Get current price info
+            fast_info = ticker.fast_info
+            price = fast_info.last_price
+            prev_close = fast_info.previous_close
+            
+            if price and prev_close:
+                change = price - prev_close
+                percent_change = (change / prev_close) * 100
+                name = ticker.info.get('shortName', symbol)
+            else:
+                # Fallback
+                price = 0.0
+                change = 0.0
+                percent_change = 0.0
+                name = symbol
 
-    return [
-        {"symbol": "ES=F", "name": "S&P Futures", "price": fluctuate(6861.75), "change": fluctuate(-0.25), "percentChange": fluctuate(-0.003)},
-        {"symbol": "NQ=F", "name": "NASDAQ Fut.", "price": fluctuate(25604.75), "change": fluctuate(-52.75), "percentChange": fluctuate(-0.21)},
-        {"symbol": "YM=F", "name": "Dow Futures", "price": fluctuate(47898), "change": fluctuate(-56), "percentChange": fluctuate(-0.12)},
-        {"symbol": "^VIX", "name": "VIX", "price": fluctuate(15.75), "change": fluctuate(-0.33), "percentChange": fluctuate(-2.05)},
-    ]
+            # Get 1 day history for sparkline (5m interval for detail)
+            history_df = ticker.history(period="1d", interval="5m")
+            
+            history_data = []
+            if not history_df.empty:
+                # Normalize data for sparkline (just values)
+                # We could send timestamps if we wanted a detailed chart, but sparkline just needs shape
+                history_data = [{"value": round(x, 2)} for x in history_df['Close'].tolist()]
+            
+            # If history is empty (e.g. market closed or error), mock a flat line or use previous close
+            if not history_data:
+                 history_data = [{"value": price}] * 20
+
+            data.append({
+                "symbol": symbol,
+                "name": name,
+                "price": round(price, 2),
+                "change": round(change, 2),
+                "percentChange": round(percent_change, 2),
+                "history": history_data
+            })
+            
+        except Exception as e:
+            print(f"Error fetching market status for {symbol}: {e}")
+            # Add error placeholder
+            data.append({
+                "symbol": symbol,
+                "name": symbol,
+                "price": 0.0,
+                "change": 0.0,
+                "percentChange": 0.0,
+                "history": []
+            })
+            
+    return data
 
 import json
 import requests
@@ -427,8 +480,18 @@ def calculate_investment(symbol: str, date: str, amount: float):
 def get_stock_history(symbol: str, period: str = "1y"):
     try:
         ticker = yf.Ticker(symbol)
+        
+        # Determine interval based on period
+        interval = "1d"
+        if period == "1d":
+            interval = "5m"
+        elif period == "5d":
+            interval = "30m" # 15m or 30m is good for 5d
+        elif period == "1mo":
+            interval = "90m" # 60m or 90m gives more detail than 1d
+        
         # Valid periods: 1d,5d,1mo,3mo,6mo,1y,2y,5y,10y,ytd,max
-        history = ticker.history(period=period)
+        history = ticker.history(period=period, interval=interval)
         
         if history.empty:
             return []
@@ -436,8 +499,10 @@ def get_stock_history(symbol: str, period: str = "1y"):
         # Format data for frontend
         data = []
         for date, row in history.iterrows():
+            # For intraday intervals (anything less than 1d), date includes time
+            # We should send the full ISO string so frontend can format it
             data.append({
-                "date": date.strftime("%Y-%m-%d"),
+                "date": date.isoformat(), 
                 "price": round(row['Close'], 2)
             })
             
