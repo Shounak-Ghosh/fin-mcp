@@ -36,6 +36,12 @@ PRICE_CACHE_DURATION = 30  # 30 seconds (Balanced to safe-guard against rate lim
 HISTORY_CACHE = {}
 HISTORY_CACHE_DURATION = 60  # 60 seconds (Much faster updates for graphs)
 
+AI_SUMMARY_CACHE = {
+    "timestamp": 0,
+    "summary": ""
+}
+AI_SUMMARY_CACHE_DURATION = 300  # 5 minutes
+
 def get_cached_stock_data(symbol: str):
     """Fetch real-time price data with short-term caching"""
     current_time = time.time()
@@ -401,38 +407,53 @@ def get_gainers():
 @app.get("/api/ai-summary")
 def get_ai_summary():
     try:
-        # In a real app, we would fetch real data here to pass to the AI
-        # For now, we'll simulate some market context or just ask for a general summary
-        # based on "current" data (which the AI might not know if it's cut off, so we should provide context)
-        
-        # Let's construct a prompt with some of our mock data to make it realistic
-        market_status = get_market_status()
-        sectors = get_sectors()
-        
-        prompt = f"""
-        Analyze the following market data and provide a comprehensive, 3-4 sentence summary of the day's stock market performance.
-        
-        Formatting Instructions:
-        - Use **bold** for key terms, ticker symbols, and significant numbers.
-        - Use [[green|text]] for positive trends, gains, or bullish signals.
-        - Use [[red|text]] for negative trends, losses, or bearish signals.
-        - Use [[blue|text]] for neutral observations or interesting highlights.
+        # Check cache first
+        current_time = time.time()
+        if AI_SUMMARY_CACHE["summary"] and (current_time - AI_SUMMARY_CACHE["timestamp"] < AI_SUMMARY_CACHE_DURATION):
+            return {"summary": AI_SUMMARY_CACHE["summary"]}
 
-        Examples:
-        - "The **S&P 500** saw a [[green|gain of 0.5%]] today."
-        - "Tech stocks [[red|declined]] due to rate hike fears."
-        
-        Content Focus:
-        - Start with the general market trend (indices).
-        - Mention standout sectors (best and worst performers).
-        - Conclude with a brief outlook or key takeaway.
-        - Ensure the summary is 3-4 sentences long.
+        # 1. Fetch Overall Market Indices (S&P 500, Nasdaq, Dow, VIX)
+        indices_tickers = ["^GSPC", "^IXIC", "^DJI", "^VIX"]
+        indices_data = []
+        for symbol in indices_tickers:
+            indices_data.append(get_cached_stock_data(symbol))
+
+        # 2. Fetch User's Watchlist (First 4)
+        watchlist_symbols = load_watchlist_symbols()[:4]
+        watchlist_data = []
+        for symbol in watchlist_symbols:
+            watchlist_data.append(get_cached_stock_data(symbol))
+
+        # Construct Prompt
+        prompt = f"""
+        Analyze the following market data and provide a response with exactly TWO distinct sections.
+
+        Overall Market Summary
+        - Analyze the "Market Indices" data below.
+        - summarize the general market trend (bullish/bearish/mixed).
+        - Mention key movements in S&P 500, Nasdaq, or Dow.
+
+        Watchlist Summary
+        - Analyze the "Your Watchlist" data below.
+        - Provide a quick snapshot of how these specific stocks are performing.
+        - Highlight the best or worst performer among them.
+
+        Formatting Instructions:
+        - Do NOT include "Section 1" or "Section 2" in the output. Just use the bold headers "**Overall Market Summary**" and "**Watchlist Summary**".
+        - Separate the two sections with a double newline (\\n\\n).
+        - Use **bold** for key terms and ticker symbols.
+        - Use [[green|text]] for positive trends/gains.
+        - Use [[red|text]] for negative trends/losses.
+        - Use [[blue|text]] for neutral/highlights.
+        - Keep the total response concise (approx 4-6 sentences total).
+
+        data:
         
         Market Indices:
-        {market_status}
+        {indices_data}
         
-        Sector Performance:
-        {sectors}
+        Your Watchlist:
+        {watchlist_data}
         """
         
         if not client:
@@ -444,14 +465,22 @@ def get_ai_summary():
                 {"role": "system", "content": "You are a helpful financial analyst assistant."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=250
+            max_tokens=350
         )
         
-        return {"summary": response.choices[0].message.content.strip()}
+        summary_text = response.choices[0].message.content.strip()
+        
+        # Update Cache
+        AI_SUMMARY_CACHE["summary"] = summary_text
+        AI_SUMMARY_CACHE["timestamp"] = current_time
+        
+        return {"summary": summary_text}
     except Exception as e:
         print(f"Error generating summary: {e}")
-        # Fallback if OpenAI fails or key is missing
-        return {"summary": "Market is showing mixed signals today with technology sector leading the charge while energy lags behind. Investors are cautiously optimistic ahead of upcoming economic data."}
+        # Return cached entry if available even if expired, as fallback
+        if AI_SUMMARY_CACHE["summary"]:
+             return {"summary": AI_SUMMARY_CACHE["summary"]}
+        return {"summary": "Market is showing mixed signals today. Please check back later for a detailed AI analysis."}
 
 @app.get("/api/stock/{symbol}/calculate")
 def calculate_investment(symbol: str, date: str, amount: float):
